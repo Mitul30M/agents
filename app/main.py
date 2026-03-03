@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app.config import Config
-from agents.monitoring.agent import MonitoringAgent
+from agents.monitoring.agent import run_monitoring_cycle
 from tools.redis_stream import RedisStreamHandler
 
 # ``app.logger`` has already configured the root logger via import above.
@@ -56,8 +56,7 @@ async def root():
 @app.get("/monitor/run")
 async def run_monitor():
     """Run a single monitoring cycle and return results."""
-    agent = MonitoringAgent()
-    return await agent.monitor()
+    return await run_monitoring_cycle()
 
 
 @app.get("/incidents")

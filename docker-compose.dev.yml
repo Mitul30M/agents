@@ -28,14 +28,16 @@ services:
 
   orchestrator:
     build:
-      context: ./agents-orchestration
+      context: .
       dockerfile: Dockerfile
-    container_name: orchestrator
+    container_name: deployment-incident-orchestrator
     environment:
       - REDIS_URL=redis://redis:6379
       - REDIS_CHANNEL=deployment-incidents
-      - REDIS_LOG_STREAM=app-logs   # stream used for application logs
+      - REDIS_LOG_STREAM=app-logs
       - LOG_DIR=/app/logs
+      - MONITORING_AGENT_LLM=gpt-oss:120b-cloud
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - ./logs:/app/logs
     depends_on:

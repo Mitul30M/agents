@@ -5,16 +5,13 @@ from typing import Any
 
 async def read_logs(limit: int = 1000) -> list[dict[str, Any]]:
     """
-    Convenience wrapper around the shared LogReader.  Will first attempt to read from
-    the filesystem and fall back to the Redis stream if the directory is empty.
+    Convenience wrapper around the shared LogReader.
+    Reads logs from the filesystem, returning up to `limit` entries.
     """
     from tools.log_reader import LogReader
     reader = LogReader()
     logs = await reader.read_logs(limit=limit)
-    if logs:
-        return logs
-    # fallback to redis
-    return await reader.read_logs_from_redis(count=limit)
+    return logs
 
 
 # async def get_metrics(timeframe: str = "1h") -> dict[str, Any]:

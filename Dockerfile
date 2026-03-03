@@ -15,12 +15,9 @@ RUN apt-get update && \
 # copy application files
 COPY . /app
 
-# install python dependencies
+# install python dependencies from requirements.txt
 RUN pip install --upgrade pip setuptools wheel
-RUN pip install fastapi uvicorn redis python-dotenv langgraph langchain-core
-
-# install project in editable mode to allow development
-RUN pip install -e . || true
+RUN pip install -r requirements.txt
 
 # expose API port
 EXPOSE 8000

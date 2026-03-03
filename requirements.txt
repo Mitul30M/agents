@@ -3,6 +3,7 @@ uvicorn
 redis
 python-dotenv
 langgraph
+langchain
 langchain-core
 langchain-ollama
 ollama

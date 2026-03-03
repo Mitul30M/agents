@@ -14,16 +14,15 @@ async def main():
     """Main worker loop."""
     logger.info("Starting background worker")
 
-    from agents.monitoring.agent import MonitoringAgent
+    from agents.monitoring.agent import run_monitoring_cycle
 
-    agent = MonitoringAgent()
     check_interval = Config.MONITOR_INTERVAL
 
     try:
         while True:
             try:
-                result = await agent.monitor()
-                logger.debug(f"monitor result: {result}")
+                result = await run_monitoring_cycle()
+                logger.debug(f"monitoring cycle result: {result}")
             except Exception as exc:
                 logger.exception(f"error during monitoring cycle: {exc}")
             await asyncio.sleep(check_interval)
