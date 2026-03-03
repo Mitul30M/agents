@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+redis
+python-dotenv
+langgraph
+langchain-core
+langchain-ollama
+ollama

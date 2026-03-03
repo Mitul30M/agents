@@ -1,0 +1,47 @@
+version: "3.8"
+services:
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
+  web:
+    build: .
+    container_name: llama-chatbot-web
+    ports:
+      - "3000:3000"
+    environment:
+      # inside compose network the redis host is "redis"
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+      - OLLAMA_API_KEY=${OLLAMA_API_KEY}
+      # allow the web container to reach the Ollama daemon running on the host
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+
+  orchestrator:
+    build:
+      context: ./agents-orchestration
+      dockerfile: Dockerfile
+    container_name: orchestrator
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - REDIS_CHANNEL=deployment-incidents
+      - REDIS_LOG_STREAM=app-logs   # stream used for application logs
+      - LOG_DIR=/app/logs
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    ports:
+      - "8000:8000"
+
+volumes:
+  redis-data:
