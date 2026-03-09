@@ -181,14 +181,14 @@ Classify severity and anomaly_score (0–1).
 async def decision_node(state: MonitoringState) -> Command:
     if state["anomaly_score"] < 0.5:
         logger.info(
-            "[Monitoring] No incident created (score=%.3f < threshold=0.700, severity=%s)",
+            "[Monitoring] No incident created (score=%.3f < threshold=0.500, severity=%s)",
             state["anomaly_score"],
             state["severity"],
         )
         return Command(goto=END)
 
     logger.info(
-        "[Monitoring] Creating incident (score=%.3f >= threshold=0.700, severity=%s)",
+        "[Monitoring] Creating incident (score=%.3f >= threshold=0.500, severity=%s)",
         state["anomaly_score"],
         state["severity"],
     )
