@@ -20,12 +20,26 @@ class Config:
     REDIS_CHANNEL = os.getenv("REDIS_CHANNEL", "deployment-incidents")
     # stream used for application logs (mirrors llama-chatbot repo)
     REDIS_LOG_STREAM = os.getenv("REDIS_LOG_STREAM", "app-logs")
+    # stream used for anomaly incidents detected by the monitoring agent
+    # defaults to REDIS_CHANNEL so existing deployments keep working
+    INCIDENT_STREAM = os.getenv(
+        "INCIDENT_STREAM", os.getenv("REDIS_CHANNEL", "incident_stream")
+    )
+    # stream used for diagnosis results produced by the diagnosis agent
+    DIAGNOSIS_STREAM = os.getenv("DIAGNOSIS_STREAM", "diagnosis_stream")
 
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     LOG_FILE = os.getenv("LOG_FILE", "logs/agent.log")
+    # directory where JSON log files are written by the Python side
     LOG_DIR = os.getenv("LOG_DIR", "logs")
+    # path to the Next.js application log file mounted into this container
+    APP_LOG_PATH = os.getenv("APP_LOG_PATH", "/app/logs/app.log")
 
     # Monitoring
     MONITOR_INTERVAL = float(os.getenv("MONITOR_INTERVAL", "10"))
-    MONITORING_AGENT_LLM = os.getenv("MONITORING_AGENT_LLM", "gpt-oss:120b-cloud")
+    MONITORING_AGENT_LLM = os.getenv("MONITORING_AGENT_LLM", "llama3.2:latest")
+
+    # LLM / Ollama
+    OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+    DIAGNOSIS_AGENT_LLM = os.getenv("DIAGNOSIS_AGENT_LLM", "qwen3-coder:480b-cloud")

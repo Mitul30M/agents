@@ -115,18 +115,17 @@ class MonitoringState(TypedDict):
 
 async def scan_logs(state: MonitoringState) -> MonitoringState:
     """Node: scan application logs."""
-    from agents.monitoring.agent import MonitoringAgent
-    
+    from agents.monitoring.agent import run_monitoring_cycle
+
     print(f"[Graph] Starting monitoring cycle: {state['cycle_id']}")
     logger.info(f"Starting monitoring cycle {state['cycle_id']}")
-    
-    agent = MonitoringAgent()
-    result = await agent.monitor()
-    
+
+    result = await run_monitoring_cycle()
+
     state["logs_checked"] = result.get("logs_checked", 0)
-    state["errors_found"] = result.get("errors", 0)
-    state["incidents_created"] = result.get("incidents", [])
-    
+    state["errors_found"] = 1 if result.get("incident_created") else 0
+    state["incidents_created"] = [result] if result.get("incident_created") else []
+
     return state
 
 

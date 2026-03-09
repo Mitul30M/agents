@@ -9,6 +9,21 @@ logger = logging.getLogger(__name__)
 class LogReader:
     """Read and parse application logs."""
 
+    _ORCHESTRATOR_LOGGER_PREFIXES = (
+        "agents.",
+        "app.",
+        "tools.",
+        "__main__",
+        "httpx",
+    )
+
+    @classmethod
+    def _is_orchestrator_entry(cls, entry: dict[str, Any]) -> bool:
+        name = str(entry.get("name") or "")
+        return any(
+            name.startswith(prefix) for prefix in cls._ORCHESTRATOR_LOGGER_PREFIXES
+        )
+
     async def read_logs(self, limit: int = 1000, filter_level: str = None) -> list[dict[str, Any]]:
         """
         Read logs from the application files located in the shared log directory.
@@ -31,21 +46,17 @@ class LogReader:
         def _load() -> list[dict[str, Any]]:
             entries: list[dict[str, Any]] = []
             log_dir = Config.LOG_DIR
-            print(f"\n[LogReader] Reading from directory: {log_dir}")
             logger.info(f"Reading logs from {log_dir}")
             if not os.path.isdir(log_dir):
-                print(f"[LogReader] Directory {log_dir} does not exist")
                 return entries
 
-            # pick the newest log file (rotation pattern app-YYYY-MM-DD.log)
+            # Read Next.js-style rotated app logs from the shared directory.
             pattern = os.path.join(log_dir, "app-*.log")
             files = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
-            print(f"[LogReader] Found {len(files)} log files: {files}")
             logger.debug(f"Found {len(files)} log files")
-            
+
             for fname in files:
                 try:
-                    print(f"[LogReader] Processing file: {fname}")
                     with open(fname, "r", encoding="utf-8") as f:
                         for line in f:
                             line = line.strip()
@@ -53,8 +64,9 @@ class LogReader:
                                 continue
                             try:
                                 entry = json.loads(line)
-                                print(f"  - level={entry.get('level')}, message={entry.get('message')}")
                             except json.JSONDecodeError:
+                                continue
+                            if self._is_orchestrator_entry(entry):
                                 continue
                             if filter_level and entry.get("level") != filter_level:
                                 continue
@@ -62,14 +74,21 @@ class LogReader:
                             if len(entries) >= limit:
                                 return entries
                 except Exception as e:
-                    print(f"[LogReader] Error reading {fname}: {e}")
                     logger.error(f"Error reading {fname}: {e}")
                     continue
-            print(f"[LogReader] Total logs read: {len(entries)}\n")
             logger.info(f"Loaded {len(entries)} log entries")
             return entries
 
-        return await asyncio.to_thread(_load)
+        entries = await asyncio.to_thread(_load)
+        if entries:
+            return entries[:limit]
+
+        # If no filesystem logs are available yet, fallback to Redis stream.
+        logger.info("No filesystem logs found, falling back to Redis stream")
+        redis_entries = await self.read_logs_from_redis(count=limit)
+        if filter_level:
+            redis_entries = [e for e in redis_entries if e.get("level") == filter_level]
+        return redis_entries[:limit]
 
     async def search_logs(self, query: str) -> list[dict[str, Any]]:
         """
@@ -111,7 +130,6 @@ class LogReader:
         the application logger.
         """
         import asyncio
-        import asyncio
         import redis
         import json
         from app.config import Config
@@ -126,7 +144,10 @@ class LogReader:
                     decoded = {k.decode(): v.decode() for k, v in data.items()}
                     if "data" in decoded:
                         try:
-                            result.append(json.loads(decoded["data"]))
+                            entry = json.loads(decoded["data"])
+                            if self._is_orchestrator_entry(entry):
+                                continue
+                            result.append(entry)
                         except Exception:
                             continue
                 return result

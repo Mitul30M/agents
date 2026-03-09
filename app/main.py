@@ -61,8 +61,15 @@ async def run_monitor():
 
 @app.get("/incidents")
 async def list_incidents(count: int = 20):
-    """Return the most recent incidents read from Redis."""
-    handler = RedisStreamHandler(Config.REDIS_URL, Config.REDIS_CHANNEL)
+    """Return the most recent incidents read from the incident stream."""
+    handler = RedisStreamHandler(Config.REDIS_URL, Config.INCIDENT_STREAM)
+    return await handler.read_incidents(count)
+
+
+@app.get("/diagnosis")
+async def list_diagnosis(count: int = 20):
+    """Return the most recent diagnosis results from Redis."""
+    handler = RedisStreamHandler(Config.REDIS_URL, Config.DIAGNOSIS_STREAM)
     return await handler.read_incidents(count)
 
 

@@ -4,6 +4,7 @@ Hybrid deterministic + LLM anomaly detection workflow.
 """
 
 import logging
+import json
 from typing import TypedDict, Dict, Any, Optional
 from datetime import datetime
 
@@ -70,17 +71,27 @@ async def aggregate_errors_node(state: MonitoringState) -> MonitoringState:
     grouped: Dict[str, Dict[str, Any]] = {}
 
     for error in state["error_logs"]:
-        signature = error.get("message", "")[:120]
+        # Build a stable signature from the entire error object so grouping is
+        # based on the full payload, not only the message field.
+        try:
+            signature = json.dumps(
+                error, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+            )
+        except TypeError:
+            signature = str(error)
 
         if signature not in grouped:
             grouped[signature] = {
                 "count": 0,
                 "first_seen": error.get("timestamp"),
                 "last_seen": error.get("timestamp"),
+                "sample": error,
+                "logs": [],
             }
 
         grouped[signature]["count"] += 1
         grouped[signature]["last_seen"] = error.get("timestamp")
+        grouped[signature]["logs"].append(error)
 
     stats = {
         "total_errors": len(state["error_logs"]),
@@ -114,10 +125,20 @@ async def classify_anomaly_node(state: MonitoringState) -> MonitoringState:
 
     logger.info("[Monitoring] Threshold exceeded — invoking LLM")
 
-    summary = "\n".join(
-        f"- {sig}: {data['count']} occurrences"
-        for sig, data in state["grouped_errors"].items()
-    )
+    summary_lines = []
+    for data in state["grouped_errors"].values():
+        sample = data.get("sample", {})
+        try:
+            sample_text = json.dumps(sample, sort_keys=True, ensure_ascii=True)
+        except TypeError:
+            sample_text = str(sample)
+
+        if len(sample_text) > 320:
+            sample_text = sample_text[:320] + "..."
+
+        summary_lines.append(f"- {data['count']} occurrences | sample: {sample_text}")
+
+    summary = "\n".join(summary_lines)
 
     prompt = f"""
 You are an anomaly detection expert.
@@ -140,6 +161,12 @@ Classify severity and anomaly_score (0–1).
     structured_llm = llm.with_structured_output(AnomalyClassification)
     result = await structured_llm.ainvoke(prompt)
 
+    logger.info(
+        "[Monitoring] LLM classified severity=%s anomaly_score=%.3f",
+        result.severity,
+        result.anomaly_score,
+    )
+
     return {
         **state,
         "severity": result.severity,
@@ -152,11 +179,19 @@ Classify severity and anomaly_score (0–1).
 # =============================================================================
 
 async def decision_node(state: MonitoringState) -> Command:
-    if state["anomaly_score"] < 0.7:
-        logger.info("[Monitoring] No incident created")
+    if state["anomaly_score"] < 0.5:
+        logger.info(
+            "[Monitoring] No incident created (score=%.3f < threshold=0.700, severity=%s)",
+            state["anomaly_score"],
+            state["severity"],
+        )
         return Command(goto=END)
 
-    logger.info("[Monitoring] Creating incident")
+    logger.info(
+        "[Monitoring] Creating incident (score=%.3f >= threshold=0.700, severity=%s)",
+        state["anomaly_score"],
+        state["severity"],
+    )
 
     incident = {
         "created_at": datetime.utcnow().isoformat(),
@@ -168,7 +203,9 @@ async def decision_node(state: MonitoringState) -> Command:
         "error_groups": state["grouped_errors"],
     }
 
-    handler = RedisStreamHandler(Config.REDIS_URL, Config.REDIS_CHANNEL)
+    # Publish to the configured incident stream so downstream agents (e.g.
+    # DiagnosisAgent) can consume a unified event feed.
+    handler = RedisStreamHandler(Config.REDIS_URL, Config.INCIDENT_STREAM)
     await handler.publish_incident(incident)
 
     logger.info("[Monitoring] Incident published")

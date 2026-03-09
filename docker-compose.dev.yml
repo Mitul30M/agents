@@ -36,7 +36,9 @@ services:
       - REDIS_CHANNEL=deployment-incidents
       - REDIS_LOG_STREAM=app-logs
       - LOG_DIR=/app/logs
-      - MONITORING_AGENT_LLM=gpt-oss:120b-cloud
+      - APP_LOG_PATH=/app/logs/app.log
+      - MONITORING_AGENT_LLM=llama3.2:latest
+      - DIAGNOSIS_AGENT_LLM=qwen3-coder:480b-cloud
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - ./logs:/app/logs

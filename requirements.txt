@@ -7,3 +7,5 @@ langchain
 langchain-core
 langchain-ollama
 ollama
+openai
+pydantic

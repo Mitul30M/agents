@@ -22,6 +22,8 @@ from app.config import Config
 class JsonFormatter(logging.Formatter):
     """Convert a LogRecord into a JSON string."""
 
+    _RESERVED_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__.keys())
+
     def format(self, record: logging.LogRecord) -> str:
         # base structure
         obj: dict[str, object] = {
@@ -32,14 +34,20 @@ class JsonFormatter(logging.Formatter):
         }
 
         # include any extra metadata passed via ``logger.info(..., extra={...})``
-        extras = {k: v for k, v in record.__dict__.items() if k not in logging.LogRecord.__dict__}
+        extras = {
+            k: v
+            for k, v in record.__dict__.items()
+            if k not in self._RESERVED_RECORD_FIELDS
+        }
         if extras:
             obj["meta"] = extras
 
         if record.exc_info:
             obj["exc_info"] = self.formatException(record.exc_info)
 
-        return json.dumps(obj)
+        # Some third-party loggers (e.g. httpx) attach custom objects like URL.
+        # Use default=str so logging never crashes on non-JSON-native types.
+        return json.dumps(obj, default=str, ensure_ascii=True)
 
 
 class RedisStreamHandler(logging.Handler):
@@ -77,14 +85,17 @@ _console.setLevel(Config.LOG_LEVEL)
 _console.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
 _root_logger.addHandler(_console)
 
-# file handler (daily rotation).  we want names like "app-YYYY-MM-DD.log" to mirror the
-# Next.js service.
-_base_path = os.path.join(Config.LOG_DIR, "app.log")
+# file handler (daily rotation). Keep orchestrator logs on a separate prefix so
+# monitoring does not recursively ingest its own telemetry when scanning
+# application logs (app-*.log) from the shared volume.
+_base_path = os.path.join(Config.LOG_DIR, "orchestrator.log")
 _file_handler = TimedRotatingFileHandler(_base_path, when="midnight", backupCount=7, encoding="utf-8")
-# the default name after rotation will be "app.log.%Y-%m-%d"; we use a custom namer
-# to convert it into "app-YYYY-MM-DD.log" exactly.
+# the default name after rotation will be "orchestrator.log.%Y-%m-%d"; we use
+# a custom namer to convert it into "orchestrator-YYYY-MM-DD.log".
 _file_handler.suffix = "%Y-%m-%d"
-_file_handler.namer = lambda name: name.replace("app.log.", "app-") + ".log"
+_file_handler.namer = (
+    lambda name: name.replace("orchestrator.log.", "orchestrator-") + ".log"
+)
 _file_handler.setLevel(Config.LOG_LEVEL)
 _file_handler.setFormatter(JsonFormatter())
 _root_logger.addHandler(_file_handler)
