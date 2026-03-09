@@ -1,8 +1,11 @@
 version: "3.8"
+
 services:
+
   redis:
     image: redis:7
     container_name: redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
@@ -10,17 +13,18 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
 
   web:
-    build: .
+    build:
+      context: ./llama-chatbot
+      dockerfile: Dockerfile
     container_name: llama-chatbot-web
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      # inside compose network the redis host is "redis"
-      - REDIS_URL=redis://redis:6379
-      - NODE_ENV=production
-      - OLLAMA_API_KEY=${OLLAMA_API_KEY}
-      # allow the web container to reach the Ollama daemon running on the host
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
     volumes:
       - ./logs:/app/logs
     depends_on:
@@ -28,24 +32,30 @@ services:
 
   orchestrator:
     build:
-      context: .
+      context: ./agents
       dockerfile: Dockerfile
     container_name: deployment-incident-orchestrator
+    restart: unless-stopped
+
+    env_file:
+      - ./agents/.env
+
     environment:
-      - REDIS_URL=redis://redis:6379
-      - REDIS_CHANNEL=deployment-incidents
-      - REDIS_LOG_STREAM=app-logs
-      - LOG_DIR=/app/logs
-      - APP_LOG_PATH=/app/logs/app.log
-      - MONITORING_AGENT_LLM=llama3.2:latest
-      - DIAGNOSIS_AGENT_LLM=qwen3-coder:480b-cloud
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      REDIS_URL: redis://redis:6379
+      LOG_DIR: /app/logs
+      APP_LOG_PATH: /app/logs/app.log
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
     volumes:
       - ./logs:/app/logs
-    depends_on:
-      - redis
+
     ports:
       - "8000:8000"
 
+    depends_on:
+      - redis
+
 volumes:
   redis-data:
+
+
+
