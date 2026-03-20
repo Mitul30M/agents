@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class MonitoringState(TypedDict):
     raw_logs: list
+    monitored_log_entry_ids: list[str]
     error_logs: list
     grouped_errors: Dict[str, Any]
     stats: Dict[str, Any]
@@ -50,8 +51,39 @@ class AnomalyClassification(BaseModel):
 async def ingest_logs_node(state: MonitoringState) -> MonitoringState:
     logger.info("[Monitoring] Ingesting logs")
     reader = LogReader()
-    logs = await reader.read_logs(limit=500)
-    return {**state, "raw_logs": logs}
+    handler = RedisStreamHandler(Config.REDIS_URL, Config.REDIS_LOG_STREAM)
+
+    # Read newest app logs from Redis and keep stream IDs so this cycle can
+    # delete what it has already consumed.
+    stream_entries = await handler.read_incidents(count=500)
+    logs: list[dict[str, Any]] = []
+    entry_ids: list[str] = []
+
+    for item in stream_entries:
+        entry_id = item.get("id")
+        payload = item.get("data")
+
+        if isinstance(payload, dict):
+            entry = payload
+        else:
+            entry = {k: v for k, v in item.items() if k not in {"id", "data"}}
+
+        if reader._is_orchestrator_entry(entry):
+            continue
+
+        logs.append(entry)
+        if isinstance(entry_id, str):
+            entry_ids.append(entry_id)
+
+    logger.info(
+        "[Monitoring] Pulled %d logs from stream %s", len(logs), Config.REDIS_LOG_STREAM
+    )
+
+    return {
+        **state,
+        "raw_logs": logs,
+        "monitored_log_entry_ids": entry_ids,
+    }
 
 # =============================================================================
 # NODE 2 — FILTER ERRORS
@@ -179,12 +211,24 @@ Classify severity and anomaly_score (0–1).
 # =============================================================================
 
 async def decision_node(state: MonitoringState) -> Command:
+    log_stream_handler = RedisStreamHandler(Config.REDIS_URL, Config.REDIS_LOG_STREAM)
+    consumed_log_ids = state.get("monitored_log_entry_ids", [])
+
     if state["anomaly_score"] < 0.5:
         logger.info(
             "[Monitoring] No incident created (score=%.3f < threshold=0.500, severity=%s)",
             state["anomaly_score"],
             state["severity"],
         )
+
+        deleted_count = await log_stream_handler.delete_entries(consumed_log_ids)
+        if consumed_log_ids:
+            logger.info(
+                "[Monitoring] Deleted %d/%d consumed app logs",
+                deleted_count,
+                len(consumed_log_ids),
+            )
+
         return Command(goto=END)
 
     logger.info(
@@ -206,9 +250,21 @@ async def decision_node(state: MonitoringState) -> Command:
     # Publish to the configured incident stream so downstream agents (e.g.
     # DiagnosisAgent) can consume a unified event feed.
     handler = RedisStreamHandler(Config.REDIS_URL, Config.INCIDENT_STREAM)
-    await handler.publish_incident(incident)
+    incident_entry_id = await handler.publish_incident(incident)
 
-    logger.info("[Monitoring] Incident published")
+    if incident_entry_id:
+        logger.info("[Monitoring] Incident published")
+        deleted_count = await log_stream_handler.delete_entries(consumed_log_ids)
+        if consumed_log_ids:
+            logger.info(
+                "[Monitoring] Deleted %d/%d consumed app logs",
+                deleted_count,
+                len(consumed_log_ids),
+            )
+    else:
+        logger.error(
+            "[Monitoring] Failed to publish incident; consumed app logs were retained"
+        )
 
     return Command(
         update={"incident": incident},
@@ -249,6 +305,7 @@ async def run_monitoring_cycle() -> Dict[str, Any]:
 
     initial_state: MonitoringState = {
         "raw_logs": [],
+        "monitored_log_entry_ids": [],
         "error_logs": [],
         "grouped_errors": {},
         "stats": {},

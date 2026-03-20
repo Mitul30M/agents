@@ -65,3 +65,31 @@ class RedisStreamHandler:
                 return ""
 
         return await asyncio.to_thread(_publish)
+
+    async def delete_entries(self, entry_ids: list[str]) -> int:
+        """
+        Delete processed entries from the configured Redis stream.
+
+        Args:
+            entry_ids: Stream entry IDs to delete.
+
+        Returns:
+            Number of deleted entries.
+        """
+        import asyncio
+
+        if not entry_ids:
+            return 0
+
+        def _delete() -> int:
+            try:
+                normalized: list[str] = [
+                    str(entry_id) for entry_id in entry_ids if entry_id
+                ]
+                if not normalized:
+                    return 0
+                return int(self.redis_client.xdel(self.channel, *normalized))
+            except Exception:
+                return 0
+
+        return await asyncio.to_thread(_delete)

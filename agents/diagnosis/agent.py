@@ -71,16 +71,7 @@ class DiagnosisAgent:
 
     async def diagnose(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Run diagnosis as a LangGraph node pipeline for one incident payload."""
-        initial_state: DiagnosisState = {
-            "payload": payload,
-            "incident": None,
-            "log_context": [],
-            "patterns": [],
-            "diagnosis_result": None,
-            "published_entry_id": None,
-        }
-
-        final_state = await self._workflow.ainvoke(initial_state)
+        final_state = await self._run_workflow(payload)
         result = final_state.get("diagnosis_result")
         if result is None:
             logger.error("Diagnosis workflow ended without diagnosis_result")
@@ -98,6 +89,20 @@ class DiagnosisAgent:
             }
 
         return result.dict(exclude_none=True)
+
+    async def _run_workflow(self, payload: Dict[str, Any]) -> DiagnosisState:
+        """Execute diagnosis workflow and return final graph state."""
+        initial_state: DiagnosisState = {
+            "payload": payload,
+            "incident": None,
+            "log_context": [],
+            "patterns": [],
+            "diagnosis_result": None,
+            "published_entry_id": None,
+        }
+
+        final_state = await self._workflow.ainvoke(initial_state)
+        return final_state
 
     # -------------------------------------------------------------------------
     # LangGraph node pipeline
@@ -226,8 +231,25 @@ class DiagnosisAgent:
                 )
                 try:
                     payload = self._decode_fields(fields)
-                    await self.diagnose(payload)
-                    handled += 1
+                    final_state = await self._run_workflow(payload)
+
+                    published_entry_id = final_state.get("published_entry_id")
+                    if published_entry_id:
+                        deleted = await asyncio.to_thread(
+                            self._redis.xdel, self._incident_stream, self._last_id
+                        )
+                        logger.info(
+                            "Deleted %d incident entry from %s after diagnosis publish: %s",
+                            int(deleted),
+                            self._incident_stream,
+                            self._last_id,
+                        )
+                        handled += 1
+                    else:
+                        logger.warning(
+                            "Diagnosis not published for incident entry %s; retained in stream",
+                            self._last_id,
+                        )
                 except Exception as exc:  # pragma: no cover - defensive
                     logger.exception(
                         "Failed to process incident entry %s: %s", self._last_id, exc
