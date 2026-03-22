@@ -145,6 +145,26 @@ async def classify_anomaly_node(state: MonitoringState) -> MonitoringState:
     total_errors = state["stats"]["total_errors"]
     groups = state["stats"]["distinct_groups"]
 
+    if (
+        total_errors >= Config.MONITOR_MIN_ERRORS_FOR_INCIDENT
+        or groups >= Config.MONITOR_MIN_GROUPS_FOR_INCIDENT
+    ):
+        logger.info(
+            "[Monitoring] Deterministic incident threshold met "
+            "(errors=%d, groups=%d)",
+            total_errors,
+            groups,
+        )
+        return {
+            **state,
+            "anomaly_score": 0.6,
+            "severity": "MEDIUM",
+            "reasoning": (
+                "Deterministic threshold exceeded for error volume/variety "
+                f"(errors={total_errors}, groups={groups})."
+            ),
+        }
+
     # deterministic threshold
     if total_errors <= 10 and groups <= 5:
         logger.info("[Monitoring] Below anomaly threshold")

@@ -22,10 +22,13 @@ async def main():
 
     from agents.monitoring.agent import run_monitoring_cycle
     from agents.diagnosis.agent import DiagnosisAgent
+    from agents.remediation.agent import RemediationAgent
 
     check_interval = Config.MONITOR_INTERVAL
     diagnosis_agent = DiagnosisAgent()
+    remediation_agent = RemediationAgent()
     diagnosis_task = asyncio.create_task(diagnosis_agent.run_forever())
+    remediation_task = asyncio.create_task(remediation_agent.run_forever())
 
     try:
         while True:
@@ -42,8 +45,11 @@ async def main():
         raise
     finally:
         diagnosis_task.cancel()
+        remediation_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await diagnosis_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await remediation_task
 
 
 if __name__ == "__main__":

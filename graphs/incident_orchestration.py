@@ -54,17 +54,72 @@ async def diagnose_incident(state: IncidentState) -> IncidentState:
 async def remediate_incident(state: IncidentState) -> IncidentState:
     """Node: execute remediation."""
     from agents.remediation.agent import RemediationAgent
-    
+
     print(f"[Graph] Remediating incident: {state['incident_id']}")
     logger.info(f"Remediating incident {state['incident_id']}")
-    
+
     agent = RemediationAgent()
-    result = await agent.remediate({
-        "id": state["incident_id"],
-        "diagnosis": state["diagnosis"],
-    })
-    state["actions_taken"].append(result)
-    state["resolved"] = result.get("status") == "success"
+
+    # Pass diagnosis output to remediation agent
+    # The diagnosis dict should contain root_cause, confidence, patterns_detected, etc.
+    remediation_payload = {
+        "incident_id": state["incident_id"],
+        **state["diagnosis"],  # Unpack all diagnosis fields
+    }
+
+    result = await agent.remediate(remediation_payload)
+
+    # Record the remediation action
+    state["actions_taken"].append(
+        {
+            "type": "remediation",
+            "status": "completed",
+            "result": result,
+        }
+    )
+
+    # Remediation success = any GitHub action was created
+    state["resolved"] = any(
+        action.get("status") == "success" for action in result.get("github_actions", [])
+    )
+
+    # Generate resolution summary
+    fix_type = result.get("fix_type", "UNKNOWN")
+    if fix_type == "CODE_CHANGE":
+        pr_actions = [
+            a
+            for a in result.get("github_actions", [])
+            if a.get("action_type") == "create_pr"
+        ]
+        if pr_actions and pr_actions[0].get("status") == "success":
+            state["resolution_summary"] = (
+                f"PR created for code fix. "
+                f"PR #{pr_actions[0].get('pr_number')} awaiting review."
+            )
+        else:
+            state["resolution_summary"] = (
+                f"Code patches generated. Manual PR submission required."
+            )
+    elif fix_type == "INFRASTRUCTURE":
+        issue_actions = [
+            a
+            for a in result.get("github_actions", [])
+            if a.get("action_type") == "create_issue"
+        ]
+        if issue_actions and issue_actions[0].get("status") == "success":
+            state["resolution_summary"] = (
+                f"Infrastructure issue reported. "
+                f"Issue #{issue_actions[0].get('issue_number')} created for investigation."
+            )
+        else:
+            state["resolution_summary"] = (
+                "Infrastructure issue escalated. Manual action required."
+            )
+    else:
+        state["resolution_summary"] = (
+            "Issue requires further investigation. Check GitHub for details."
+        )
+
     return state
 
 

@@ -45,8 +45,11 @@ services:
       LOG_DIR: /app/logs
       APP_LOG_PATH: /app/logs/app.log
       OLLAMA_BASE_URL: http://host.docker.internal:11434
+      GH_TOKEN: ${GH_TOKEN}
+      REMEDIATION_REPO_PATH: /workspace/llama-chatbot
     volumes:
       - ./logs:/app/logs
+      - ./llama-chatbot:/workspace/llama-chatbot:rw
 
     ports:
       - "8000:8000"

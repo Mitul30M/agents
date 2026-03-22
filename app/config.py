@@ -27,6 +27,8 @@ class Config:
     )
     # stream used for diagnosis results produced by the diagnosis agent
     DIAGNOSIS_STREAM = os.getenv("DIAGNOSIS_STREAM", "diagnosis_stream")
+    # stream used for remediation outputs produced by the remediation agent
+    REMEDIATION_STREAM = os.getenv("REMEDIATION_STREAM", "remediation_stream")
 
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -39,7 +41,20 @@ class Config:
     # Monitoring
     MONITOR_INTERVAL = float(os.getenv("MONITOR_INTERVAL", "10"))
     MONITORING_AGENT_LLM = os.getenv("MONITORING_AGENT_LLM", "llama3.2:latest")
+    # deterministic escalation thresholds before LLM classification
+    MONITOR_MIN_ERRORS_FOR_INCIDENT = int(
+        os.getenv("MONITOR_MIN_ERRORS_FOR_INCIDENT", "5")
+    )
+    MONITOR_MIN_GROUPS_FOR_INCIDENT = int(
+        os.getenv("MONITOR_MIN_GROUPS_FOR_INCIDENT", "3")
+    )
 
     # LLM / Ollama
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
     DIAGNOSIS_AGENT_LLM = os.getenv("DIAGNOSIS_AGENT_LLM", "qwen3-coder:480b-cloud")
+    REMEDIATION_AGENT_LLM = os.getenv("REMEDIATION_AGENT_LLM", "qwen3-coder:480b-cloud")
+    REMEDIATION_PATCH_MAX_FILES = int(os.getenv("REMEDIATION_PATCH_MAX_FILES", "2"))
+    # absolute path inside runtime/container that remediation is allowed to modify
+    REMEDIATION_REPO_PATH = os.getenv(
+        "REMEDIATION_REPO_PATH", "/workspace/llama-chatbot"
+    )
