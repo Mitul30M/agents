@@ -1,61 +1,27 @@
-"""Background worker for async agent orchestration."""
+"""Background worker entrypoint for the orchestrator supervisor."""
 
 import asyncio
-import contextlib
 import logging
 
 from app import logger  # noqa: F401
-
-from app.config import Config
 
 logger = logging.getLogger(__name__)
 
 
 async def main():
-    """Main worker loop.
-
-    Runs the monitoring cycle on a fixed interval and, in parallel, starts the
-    diagnosis agent which continuously consumes incidents from Redis and
-    publishes diagnosis results.
-    """
+    """Run OrchestratorAgent as the process-level supervisor."""
     logger.info("Starting background worker")
+    from agents.orchestrator.agent import OrchestratorAgent
 
-    from agents.monitoring.agent import run_monitoring_cycle
-    from agents.diagnosis.agent import DiagnosisAgent
-    from agents.remediation.agent import RemediationAgent
-    from agents.communication.agent import CommunicationAgent
-
-    check_interval = Config.MONITOR_INTERVAL
-    diagnosis_agent = DiagnosisAgent()
-    remediation_agent = RemediationAgent()
-    communication_agent = CommunicationAgent()
-    diagnosis_task = asyncio.create_task(diagnosis_agent.run_forever())
-    remediation_task = asyncio.create_task(remediation_agent.run_forever())
-    communication_task = asyncio.create_task(communication_agent.run_forever())
+    orchestrator = OrchestratorAgent()
 
     try:
-        while True:
-            try:
-                result = await run_monitoring_cycle()
-                logger.debug(f"monitoring cycle result: {result}")
-            except Exception as exc:
-                logger.exception(f"error during monitoring cycle: {exc}")
-            await asyncio.sleep(check_interval)
+        await orchestrator.run_forever()
     except KeyboardInterrupt:  # pragma: no cover - interactive shutdown
         logger.info("Worker shutdown requested by user")
     except Exception as e:  # pragma: no cover - defensive
         logger.error("Worker error: %s", e)
         raise
-    finally:
-        diagnosis_task.cancel()
-        remediation_task.cancel()
-        communication_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await diagnosis_task
-        with contextlib.suppress(asyncio.CancelledError):
-            await remediation_task
-        with contextlib.suppress(asyncio.CancelledError):
-            await communication_task
 
 
 if __name__ == "__main__":

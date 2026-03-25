@@ -49,6 +49,20 @@ class Config:
         os.getenv("MONITOR_MIN_GROUPS_FOR_INCIDENT", "3")
     )
 
+    # Orchestrator supervision (phase 1/2)
+    ORCH_HEARTBEAT_SECONDS = float(os.getenv("ORCH_HEARTBEAT_SECONDS", "5"))
+    ORCH_LIVENESS_TIMEOUT_SECONDS = float(
+        os.getenv("ORCH_LIVENESS_TIMEOUT_SECONDS", "30")
+    )
+    ORCH_MAX_CHILD_RESTARTS = int(os.getenv("ORCH_MAX_CHILD_RESTARTS", "5"))
+    ORCH_INCIDENT_STAGE_TIMEOUT_SECONDS = float(
+        os.getenv("ORCH_INCIDENT_STAGE_TIMEOUT_SECONDS", "120")
+    )
+    ORCH_MAX_INCIDENT_RETRIES = int(os.getenv("ORCH_MAX_INCIDENT_RETRIES", "2"))
+    ORCH_LOG_FILE_PATH = os.getenv("ORCH_LOG_FILE_PATH", "logs/orchestrator.log")
+    ORCH_STATUS_KEY = os.getenv("ORCH_STATUS_KEY", "orchestrator:status")
+    ORCH_TIMELINE_KEY = os.getenv("ORCH_TIMELINE_KEY", "orchestrator:timelines")
+
     # LLM / Ollama
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
     DIAGNOSIS_AGENT_LLM = os.getenv("DIAGNOSIS_AGENT_LLM", "qwen3-coder:480b-cloud")

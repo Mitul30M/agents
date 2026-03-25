@@ -1,5 +1,7 @@
 """Main API entry point."""
 
+import asyncio
+import json
 from contextlib import asynccontextmanager
 
 # configure logging early (module import performs the setup)
@@ -9,6 +11,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+import redis
 
 from app.config import Config
 from agents.monitoring.agent import run_monitoring_cycle
@@ -71,6 +74,56 @@ async def list_diagnosis(count: int = 20):
     """Return the most recent diagnosis results from Redis."""
     handler = RedisStreamHandler(Config.REDIS_URL, Config.DIAGNOSIS_STREAM)
     return await handler.read_incidents(count)
+
+
+async def _read_orchestrator_snapshot(redis_key: str) -> dict:
+    """Read JSON snapshot payload from Redis key as a dictionary."""
+
+    def _read() -> dict:
+        client = redis.from_url(Config.REDIS_URL)
+        raw = client.get(redis_key)
+        if not raw:
+            return {}
+        if isinstance(raw, bytes):
+            raw = raw.decode()
+        try:
+            payload = json.loads(raw)
+            return payload if isinstance(payload, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+
+    return await asyncio.to_thread(_read)
+
+
+@app.get("/orchestrator/status")
+async def orchestrator_status():
+    """Return latest orchestrator child health snapshot."""
+    payload = await _read_orchestrator_snapshot(Config.ORCH_STATUS_KEY)
+    if not payload:
+        return JSONResponse(
+            {
+                "status": "unavailable",
+                "message": "No orchestrator status has been published yet",
+            },
+            status_code=503,
+        )
+    return JSONResponse(payload)
+
+
+@app.get("/orchestrator/timelines")
+async def orchestrator_timelines():
+    """Return latest in-memory incident timelines from orchestrator."""
+    payload = await _read_orchestrator_snapshot(Config.ORCH_TIMELINE_KEY)
+    if not payload:
+        return JSONResponse(
+            {
+                "status": "unavailable",
+                "message": "No orchestrator timeline data has been published yet",
+                "timelines": {},
+            },
+            status_code=503,
+        )
+    return JSONResponse({"status": "ok", "timelines": payload})
 
 
 if __name__ == "__main__":
