@@ -58,3 +58,10 @@ class Config:
     REMEDIATION_REPO_PATH = os.getenv(
         "REMEDIATION_REPO_PATH", "/workspace/llama-chatbot"
     )
+
+    # Email / Communication
+    SMTP_SERVER = os.getenv("SMTP_SERVER", "")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SENDER_EMAIL = os.getenv("SENDER_EMAIL", "")
+    SENDER_PASSWORD = os.getenv("SENDER_PASSWORD", "")
+    DEVELOPER_EMAIL = os.getenv("DEVELOPER_EMAIL", "")

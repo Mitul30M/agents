@@ -126,16 +126,42 @@ async def remediate_incident(state: IncidentState) -> IncidentState:
 async def communicate_incident(state: IncidentState) -> IncidentState:
     """Node: send notifications about the incident."""
     from agents.communication.agent import CommunicationAgent
-    
+
     print(f"[Graph] Communicating incident: {state['incident_id']}")
     logger.info(f"Communicating incident {state['incident_id']}")
-    
+
     agent = CommunicationAgent()
-    await agent.notify({
-        "id": state["incident_id"],
-        "resolved": state["resolved"],
-        "summary": state["resolution_summary"],
-    })
+
+    # Get the remediation result from actions_taken
+    remediation_result = {}
+    for action in state.get("actions_taken", []):
+        if action.get("type") == "remediation":
+            remediation_result = action.get("result", {})
+            break
+
+    # Prepare incident data for communication agent
+    incident_data = {
+        "incident_id": state["incident_id"],
+        "created_at": state.get("created_at", "Unknown"),
+        "error_message": state.get("error_message", "Unknown error"),
+        "error_location": state.get(
+            "error_message", "Unknown location"
+        ),  # Can be enhanced
+        "diagnosis": state.get("diagnosis", {}),
+        "remediation": remediation_result,
+    }
+
+    notification_result = await agent.notify(incident_data)
+
+    # Log the notification result
+    state["actions_taken"].append(
+        {
+            "type": "communication",
+            "status": notification_result.get("status", "unknown"),
+            "result": notification_result,
+        }
+    )
+
     return state
 
 
